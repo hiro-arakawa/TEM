@@ -1,4 +1,5 @@
 import pandas as pd
+from common.settings import get_table_name
 
 class FormulaDataService:
     """
@@ -44,18 +45,19 @@ class FormulaDataService:
             return False
 
     # FormulaDataService の save_calculation_results メソッド修正案
-    def save_calculation_results(self, df: pd.DataFrame, destination: str) -> bool:
+    def save_calculation_results(self, df: pd.DataFrame) -> bool:
+        calc_table = get_table_name("calculation_result_table")
         if df.empty:
-            self.logger.warning(f"No data to save for table: {destination}. DataFrame is empty.")
+            self.logger.warning(f"No data to save for table: {calc_table}. DataFrame is empty.")
             return False
 
         try:
             # SensorDataService を使用した保存処理
             result = self.sensor_data_service.save_calculation_result(df)
             if result:
-                self.logger.info(f"Calculation results saved successfully to {destination}.")
+                self.logger.info(f"Calculation results saved successfully to {calc_table}.")
             else:
-                self.logger.warning(f"Failed to save calculation results to {destination}.")
+                self.logger.warning(f"Failed to save calculation results to {calc_table}.")
             return result
         except Exception as e:
             self.logger.error(f"Failed to save calculation results: {e}")

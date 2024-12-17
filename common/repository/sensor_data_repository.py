@@ -31,20 +31,14 @@ class ProductionSensorDataRepository(AbstractSensorDataRepository):
         self.sql_client = sql_client
         self.logger = logger
 
-    def fetch_sensor_data(self, table_name: str, tags: List[str], date: str) -> pd.DataFrame:
-        """
-        指定されたテーブル、タグ、日付に基づいてセンサーデータを取得。
 
-        :param table_name: str, 取得元のテーブル名
-        :param tags: List[str], 取得するタグのリスト
-        :param date: str, データを取得する対象の日付（YYYY-MM-DD形式）
-        :return: pd.DataFrame, センサーデータ
-        """
+    def fetch_sensor_data(self, table_name: str, tags: List[str], date: str) -> pd.DataFrame:
         sql_query = f"""
         SELECT 
             [factory], [tag], [date],
             [local_tag], [local_id], [name], [unit], [data_division],
-            {', '.join([f'[d{i}_{j}]' for i in range(4) for j in range(30)])}
+            {', '.join([f'[d{i}_{j}]' for i in range(4) for j in range(30)])},
+            [last_update]  -- 追加
         FROM {table_name}
         WHERE [tag] IN ({', '.join(['?' for _ in tags])})
         AND [date] = ?
@@ -60,7 +54,7 @@ class ProductionSensorDataRepository(AbstractSensorDataRepository):
 
             # カラムリスト
             columns = ["factory", "tag", "date", "local_tag", "local_id", "name", "unit", "data_division"] + \
-                      [f"d{i}_{j}" for i in range(4) for j in range(30)]
+                    [f"d{i}_{j}" for i in range(4) for j in range(30)] + ["last_update"]  # 修正箇所
 
             # DataFrame作成
             return pd.DataFrame(sql_response, columns=columns)
@@ -70,7 +64,8 @@ class ProductionSensorDataRepository(AbstractSensorDataRepository):
 
     def save_sensor_data(self, df: pd.DataFrame, table_name: str) -> bool:
         """
-        Save sensor data to the specified table in the database.
+        Save sensor data to the specified table in the database using UPDATE for existing rows
+        and INSERT for new rows.
         """
         try:
             # 必須カラムと空のデータフレームの早期チェック
@@ -78,30 +73,62 @@ class ProductionSensorDataRepository(AbstractSensorDataRepository):
                 self.logger.error("Data is missing required columns or is empty.")
                 return False
 
-            # SQL クエリ生成
+            import datetime
+
+            # データフレームに現在の時刻を表す列を追加
+            if "last_update" in df.columns:
+                self.logger.warning("Overwriting existing 'last_update' column.")
+            df['last_update'] = datetime.datetime.now()
+
+            # カラムリスト
             columns = df.columns.tolist()
-            placeholders = ", ".join(["?"] * len(columns))
-            merge_query = f"""
-            MERGE INTO {table_name} AS target
-            USING (VALUES ({placeholders})) AS source ({', '.join(columns)})
-            ON target.factory = source.factory AND target.tag = source.tag AND target.date = source.date
-            WHEN MATCHED THEN
-                UPDATE SET last_update = GETDATE()
-            WHEN NOT MATCHED THEN
-                INSERT ({', '.join(columns)}) VALUES ({placeholders});
+
+            # UPDATE用のクエリ生成
+            update_query = f"""
+            UPDATE {table_name}
+            SET {', '.join([f"{col} = ?" for col in columns if col != 'last_update'])},
+                last_update = ?
+            WHERE factory = ? AND tag = ? AND date = ?
             """
 
-            # SQL 実行
+            # INSERT用のクエリ生成
+            insert_query = f"""
+            INSERT INTO {table_name} ({', '.join(columns)})
+            VALUES ({', '.join(['?'] * len(columns))})
+            """
+
             with self.sql_client.connection_factory.create_connection() as connection:
-                with connection.cursor() as cursor:
-                    cursor.executemany(merge_query, df.values.tolist())
-                    connection.commit()
+                try:
+                    with connection.cursor() as cursor:
+                        for _, row in df.iterrows():
+                            # UPDATEの実行
+                            update_params = [
+                                row[col] for col in columns if col != 'last_update'
+                            ] + [row['last_update'], row['factory'], row['tag'], row['date']]
+                            cursor.execute(update_query, update_params)
+
+                            # INSERTの実行（更新が影響を及ぼさない場合）
+                            if cursor.rowcount == 0:
+                                insert_params = [row[col] for col in columns]
+                                cursor.execute(insert_query, insert_params)
+
+                        connection.commit()
+                except Exception as e:
+                    connection.rollback()
+                    self.logger.error(f"SQL execution error during save operation: {e}")
+                    import traceback
+                    self.logger.error(traceback.format_exc())
+                    return False
+
             self.logger.info(f"Data successfully saved to {table_name}.")
             return True
 
         except Exception as e:
-            self.logger.error(f"SQL execution error during save operation: {e}")
+            self.logger.error(f"Unexpected error during save operation: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return False
+
 
     def copy_sensor_data(self, source_table: str, target_table: str, tags: List[str], date: str) -> bool:
         """

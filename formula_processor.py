@@ -3,13 +3,13 @@ from typing import List
 
 from sympy import sympify, symbols, lambdify
 import numpy as np
-from common import common
+from common.common import CommonFacade
 
 class FormulaProcessor:
     """
     SQL出力形式のデータを直接処理する FormulaProcessor クラス。
     """
-    def __init__(self, com: common):
+    def __init__(self, com: CommonFacade):
         self.com = com
 
     def extract_tags_from_formula(self, formula: str) -> List[str]:
@@ -143,7 +143,7 @@ class FormulaProcessor:
         ターゲット日付と計算式IDを指定して計算を実行し、結果をデータベースに保存する。
         """
         try:
-            formula_data = self.com.formula_service.get_formula_by_id(formula_id)
+            formula_data = self.com.formula_data_service.get_formula_by_id(formula_id)
             self.com.logger.info(f"Formula data retrieved for ID {formula_id}: {formula_data}")
 
             if not formula_data or not isinstance(formula_data, dict):
@@ -177,7 +177,7 @@ class FormulaProcessor:
                 self.com.logger.warning(f"No data processed for formula ID {formula_id} on {target_date}.")
                 return
 
-            success = self.com.sensor_data_service.save_calculation_result(result_data)
+            success = self.com.formula_data_service.save_calculation_results(result_data)
             if success:
                 self.com.logger.info(f"Calculation completed and saved for formula ID {formula_id} on {target_date}.")
             else:
@@ -189,6 +189,10 @@ class FormulaProcessor:
 
 if __name__ == "__main__":
     # 実行例
-    com = common.CommonFacade()
+    com = CommonFacade()
     processor = FormulaProcessor(com)
+    processor.process_formula("2024-12-02", "H2")
     processor.process_formula("2024-12-02", "H3")
+    processor.process_formula("2024-12-02", "H4")
+    processor.process_formula("2024-12-02", "H5")
+    processor.process_formula("2024-12-02", "H6")

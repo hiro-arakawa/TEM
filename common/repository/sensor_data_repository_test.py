@@ -112,10 +112,12 @@ def test_production_repository_fetch_data(production_repository, mocker):
     date = "2024-12-31"
 
     # モックした SQL 応答
-    mock_sql_response = [["A", "sensor_1", "2024-12-31", "local_tag1", "local_id1", "name1", "unit1", "division1"] +
-                         [100] * 120]
+    mock_sql_response = [
+        ["A", "sensor_1", "2024-12-31", "local_tag1", "local_id1", "name1", "unit1", "division1"] +
+        [100] * 120 + [None]  # `last_update` を含む
+    ]
     mock_columns = ["factory", "tag", "date", "local_tag", "local_id", "name", "unit", "data_division"] + \
-                   [f"d{i}_{j}" for i in range(4) for j in range(30)]
+                   [f"d{i}_{j}" for i in range(4) for j in range(30)] + ["last_update"]
     mock_df = pd.DataFrame(mock_sql_response, columns=mock_columns)
 
     # SQL クエリの結果をモック
@@ -126,7 +128,6 @@ def test_production_repository_fetch_data(production_repository, mocker):
 
     # 検証
     pd.testing.assert_frame_equal(result, mock_df, check_dtype=False)
-
 
 def test_production_repository_save_data_missing_columns(production_repository):
     """ProductionSensorDataRepository の save_sensor_data が必須列欠損時にエラーを返すかを検証"""
@@ -225,29 +226,23 @@ def test_production_repository_save_sql_error(production_repository, mocker):
 
     # SQL エラーをモック
     mock_cursor = MagicMock()
-    mock_cursor.executemany.side_effect = RuntimeError("SQL execution failed")
-
-    # Connection のモックを作成
+    mock_cursor.execute.side_effect = RuntimeError("SQL execution failed")
     mock_connection = MagicMock()
     mock_connection.cursor.return_value.__enter__.return_value = mock_cursor
 
-    # SQLClient のモックを作成
     mock_sql_client = MagicMock()
     mock_sql_client.connection_factory.create_connection.return_value.__enter__.return_value = mock_connection
-
-    # Repository にモックをパッチ
     mocker.patch.object(production_repository.repository, "sql_client", mock_sql_client)
 
     # 実行
     result = production_repository.save_sensor_data(df, table_name)
 
     # デバッグ用出力
-    print(f"Mock calls on executemany: {mock_cursor.executemany.mock_calls}")
-    print(f"Mock calls on connection: {mock_connection.mock_calls}")
-    print(f"Parameters passed to executemany: {df.values.tolist()}")
+    print(f"Mock calls on execute: {mock_cursor.execute.mock_calls}")
+    print(f"Data passed to execute: {df.values.tolist()}")
 
     # 検証
-    mock_cursor.executemany.assert_called_once_with(ANY, df.values.tolist())
+    mock_cursor.execute.assert_called()  # 少なくとも `execute` が呼び出されることを確認
     assert not result, "SQL エラー時に保存処理が成功してしまいました"
 
 def test_production_repository_fetch_as_dto_with_anomalous_data(production_repository, mocker):

@@ -124,12 +124,11 @@ def test_save_calculation_results_success(formula_service, mock_sensor_data_serv
     mock_sensor_data_service.save_calculation_result.return_value = True
 
     # メソッド呼び出し
-    result = formula_service.save_calculation_results(test_df, "test_table")
+    result = formula_service.save_calculation_results(test_df)
 
     # 検証
     mock_sensor_data_service.save_calculation_result.assert_called_once_with(test_df)
     assert result is True
-
 
 def test_save_calculation_results_exception(formula_service, mock_formula_repository):
     """保存時に例外が発生した場合の動作確認"""
@@ -152,22 +151,18 @@ def test_save_calculation_results_exception(formula_service, mock_formula_reposi
     # 検証
     mock_formula_repository.save_calculation_data.assert_called_once_with(test_df, destination)
 
-def test_save_calculation_results_empty_dataframe(formula_service, mock_formula_repository):
+def test_save_calculation_results_empty_dataframe(formula_service):
     """空のデータフレームが渡された場合の動作確認"""
     test_df = pd.DataFrame()  # 空のデータフレーム
-    destination = "test_table"
 
     # メソッド呼び出し
-    result = formula_service.save_calculation_results(test_df, destination)
+    result = formula_service.save_calculation_results(test_df)
 
     # 検証
-    mock_formula_repository.save_calculation_data.assert_not_called()  # 保存は呼び出されない
     assert result is False
-
 
 def test_save_calculation_results_failure(formula_service, mock_sensor_data_service):
     """計算結果の保存に失敗する場合のテスト"""
-    # モックデータを設定
     test_df = pd.DataFrame({
         "factory": ["A"],
         "tag": ["T1"],
@@ -179,11 +174,12 @@ def test_save_calculation_results_failure(formula_service, mock_sensor_data_serv
     mock_sensor_data_service.save_calculation_result.return_value = False  # 保存失敗を模擬
 
     # メソッド呼び出し
-    result = formula_service.save_calculation_results(test_df, "test_table")
+    result = formula_service.save_calculation_results(test_df)
 
     # 検証
     mock_sensor_data_service.save_calculation_result.assert_called_once_with(test_df)
     assert result is False
+
 
 def test_save_calculation_results_exception(formula_service, mock_sensor_data_service):
     """保存時に例外が発生した場合の動作確認"""
@@ -198,7 +194,7 @@ def test_save_calculation_results_exception(formula_service, mock_sensor_data_se
     mock_sensor_data_service.save_calculation_result.side_effect = Exception("Database error")
 
     with pytest.raises(Exception, match="Database error"):
-        formula_service.save_calculation_results(test_df, "test_table")
+        formula_service.save_calculation_results(test_df)
 
     mock_sensor_data_service.save_calculation_result.assert_called_once_with(test_df)
 
@@ -215,7 +211,7 @@ def test_logging_on_save_exception(formula_service, mock_sensor_data_service, lo
     mock_sensor_data_service.save_calculation_result.side_effect = Exception("Database error")
 
     with pytest.raises(Exception, match="Database error"):
-        formula_service.save_calculation_results(test_df, "test_table")
+        formula_service.save_calculation_results(test_df)
 
     # ログ記録の検証
     logger_mock.error.assert_called_once_with("Failed to save calculation results: Database error")
@@ -234,7 +230,7 @@ def test_save_results_via_sensor_service(formula_service, mock_sensor_data_servi
     mock_sensor_data_service.save_calculation_result.return_value = True
 
     # メソッド呼び出し
-    result = formula_service.save_calculation_results(test_df, "test_table")
+    result = formula_service.save_calculation_results(test_df)
 
     # 検証
     mock_sensor_data_service.save_calculation_result.assert_called_once_with(test_df)
@@ -253,7 +249,7 @@ def test_save_large_dataset(formula_service, mock_sensor_data_service):
     mock_sensor_data_service.save_calculation_result.return_value = True
 
     # メソッド呼び出し
-    result = formula_service.save_calculation_results(large_df, "test_table")
+    result = formula_service.save_calculation_results(large_df)
 
     # 検証
     mock_sensor_data_service.save_calculation_result.assert_called_once_with(large_df)

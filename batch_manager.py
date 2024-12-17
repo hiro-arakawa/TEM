@@ -1,26 +1,36 @@
-import time
+from common.service.batch_service.batch_service import BatchService
 from apscheduler.schedulers.background import BackgroundScheduler
+import logging
+import time
 
-from common import common
+# ログ設定
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
-def view(com):
-    # ここに実行したい処理を記述
-    print("1秒ごとの処理を実行中...")
-    com.logger.info(com.schedule_service.get_schedules())
-    com.logger.info(com.program_service.get_Program())
+# BatchService の初期化
+service = BatchService()
 
-
+# メイン処理
 if __name__ == "__main__":
-    com = common.CommonFacade()
-
     scheduler = BackgroundScheduler()
-    # 引数付きの関数をスケジュールに追加
-    scheduler.add_job(view, 'interval', seconds=1, args=[com])
     scheduler.start()
 
-    # プログラムが終了しないように待機
     try:
+        logging.info("Batch Manager started. Checking and scheduling tasks...")
+
+        # 循環依存の検出
+        try:
+            service.detect_circular_dependency()
+            logging.info("No circular dependencies detected.")
+        except Exception as e:
+            logging.error(f"Dependency error: {e}")
+            raise SystemExit("Circular dependencies found. Stopping Batch Manager.")
+
+        # スケジュールを登録
+        service.schedule_batches(scheduler)
+
+        # 実行中のスケジュール監視ループ
         while True:
             time.sleep(1)
     except (KeyboardInterrupt, SystemExit):
+        logging.info("Shutting down Batch Manager...")
         scheduler.shutdown()

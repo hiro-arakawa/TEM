@@ -1,7 +1,5 @@
-from common.service.schedule_service import ScheduleService
-from common.service.program_service import ProgramService
-from common.service.sensor_data_service import SensorDataService
-from common.service.formula_data_service import FormulaDataService
+from common.service.sensor_data_service.sensor_data_service import SensorDataService
+from common.service.formula_data_service.formula_data_service import FormulaDataService
 
 from common.repository.schedule_repository import ScheduleRepository
 from common.repository.sensor_data_repository import SensorDataRepository, ProductionSensorDataRepository, TestSensorDataRepository
@@ -18,11 +16,8 @@ class CommonFacade:
     _instance = None
     logger: Optional[Logger] = None
 
-    schedule_service: Optional[ScheduleService] = None
-    program_service: Optional[ProgramService] = None
-    
     sensor_data_service: Optional[SensorDataService] = None
-    formula_service: Optional[FormulaDataService] = None
+    formula_data_service: Optional[FormulaDataService] = None
 
     _schedule_repository: Optional[ScheduleRepository] = None
     _sensor_data_repository: Optional[SensorDataRepository] = None
@@ -53,9 +48,7 @@ class CommonFacade:
             cls._instance._formula_data_repository = FormulaDataRepository(production_formula_repo, cls._instance.logger)
 
             # リポジトリをサービスに渡す
-            cls._instance.schedule_service = ScheduleService(cls._instance._schedule_repository)
-            cls._instance.program_service = ProgramService()
             cls._instance.sensor_data_service = SensorDataService(cls._instance._sensor_data_repository)
-            cls._instance.formula_service = FormulaDataService(cls._instance._formula_data_repository,cls._instance.sensor_data_service, cls._instance.logger)
+            cls._instance.formula_data_service = FormulaDataService(cls._instance._formula_data_repository,cls._instance.sensor_data_service, cls._instance.logger)
 
         return cls._instance

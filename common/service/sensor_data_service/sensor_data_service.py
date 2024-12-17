@@ -56,7 +56,6 @@ class SensorDataService:
         calc_table = get_table_name("calculation_result_table")
         return self.repository.save_sensor_data(df, calc_table)
 
-
     def delete_sensor_data(self, tags: List[str], date: str) -> bool:
         """
         sensor_data テーブルから指定されたタグと日付に基づいてデータを削除する。
