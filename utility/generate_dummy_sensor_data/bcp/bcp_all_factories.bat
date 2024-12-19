@@ -1,0 +1,1 @@
+bcp batch.data_loader_data_load_temp in "bcp_all_factories_data.csv" -S 192.168.80.133 -d TEM -U tem_prog -P Ladm01# -f "data_loader_format.fmt" -e "bcp_error.log" -b 1000
