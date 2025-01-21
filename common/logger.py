@@ -2,6 +2,22 @@
 import logging
 
 class Logger:
+    """
+    Loggerクラスは、特定の設定でログを処理するためのクラスです。
+    属性:
+        logger (logging.Logger): ログメッセージを記録するために使用されるロガーインスタンス。
+    メソッド:
+        __init__():
+            Loggerインスタンスを初期化し、ストリームハンドラとフォーマッタを設定します。
+        debug(message: str):
+            DEBUGレベルのメッセージを記録します。
+        info(message: str):
+            INFOレベルのメッセージを記録します。
+        warning(message: str):
+            WARNINGレベルのメッセージを記録します。
+        error(message: str):
+            ERRORレベルのメッセージを記録します。
+    """
     def __init__(self):
         self.logger = logging.getLogger("tem_loggeer")
         self.logger.setLevel(logging.DEBUG)

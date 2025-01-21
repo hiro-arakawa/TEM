@@ -4,15 +4,16 @@ from typing import List
 from sympy import sympify, symbols, lambdify
 import numpy as np
 from common.common import CommonFacade
+import re
 
-class FormulaProcessor:
+class DataPocessing:
     """
-    SQL出力形式のデータを直接処理する FormulaProcessor クラス。
+    SQL出力形式のデータを直接処理する DataPocessingクラス
     """
     def __init__(self, com: CommonFacade):
         self.com = com
 
-    def extract_tags_from_formula(self, formula: str) -> List[str]:
+    def extract_tags_from_formula2(self, formula: str) -> List[str]:
         """
         演算式を解析して、必要な変数（タグ）のリストを抽出します。
         """
@@ -37,6 +38,13 @@ class FormulaProcessor:
             self.com.logger.error(f"Invalid formula syntax: {e}")
             raise ValueError("Invalid formula syntax")
 
+    def extract_tags_from_formula(self, formula: str) -> List[str]:
+        self.com.logger.info(f"Parsing formula: {formula}")
+        tags = re.findall(r'\b\d+D\d+\b', formula)  # タグの形式を正規表現で抽出
+        self.com.logger.info(f"Extracted tags: {tags}")
+        return tags
+
+
     def validate_tags_in_data(self, tags: List[str], sql_data: pd.DataFrame):
         """
         SQL出力形式のデータ内に必要な変数（タグ）がすべて存在するか確認。
@@ -54,7 +62,6 @@ class FormulaProcessor:
             raise ValueError(f"Data missing for variables: {missing_tags}")
         self.com.logger.info("All required variables are available.")
 
-
     def calculate_result(self, sql_data: pd.DataFrame, formula: str, tags: List[str], formula_id: str, sensor_name: str) -> pd.DataFrame:
         self.com.logger.info("Calculating result with data assurance codes.")
         try:
@@ -64,17 +71,27 @@ class FormulaProcessor:
             
             # 対象タグのデータフィルタリング
             relevant_data = sql_data[sql_data["tag"].isin(tags)]
-            
-            # SymPy 式を NumPy 関数に変換
-            formula_expr = sympify(formula)
-            tag_symbols = [symbols(tag) for tag in tags]  # 順序を明示
+
+            # タグをプレースホルダーに変換
+            converted_formula = formula
+            tag_map = {}
+
+            for i, tag in enumerate(tags):
+                symbol_name = f"VAR_{i}"  # 変換用シンボル
+                tag_map[symbol_name] = tag
+                converted_formula = converted_formula.replace(tag, symbol_name)
+
+            # sympyで式を解釈
+            formula_expr = sympify(converted_formula, locals={k: symbols(k) for k in tag_map.keys()})
+
+            tag_symbols = [symbols(f"VAR_{i}") for i in range(len(tags))]  # プレースホルダーで順序を明示
             formula_func = lambdify(tag_symbols, formula_expr, modules="numpy")
 
-            # コンテキストデータを NumPy 配列として事前に構築
+            # コンテキストデータを NumPy 配列として構築
             context = {
                 tag: {
                     f"d{i}": relevant_data.loc[relevant_data["tag"] == tag, [f"d{i}_{j}" for j in range(30)]].to_numpy().flatten()
-                    for i in range(4)  # d0, d1, d2, d3
+                    for i in range(4)
                 }
                 for tag in tags
             }
@@ -85,20 +102,18 @@ class FormulaProcessor:
             # グループ単位で計算を実行
             for (factory, date), group in relevant_data.groupby(["factory", "date"]):
                 try:
-                    # 各時間ステップごとにデータを取り出す
-                    d1_data = np.vstack([context[tag]["d1"] for tag in tags]).T  # 順序を保持
+                    d1_data = np.vstack([context[tag]["d1"] for tag in tags]).T
                     d2_data = np.vstack([context[tag]["d2"] for tag in tags]).T
                     d3_data = np.vstack([context[tag]["d3"] for tag in tags]).T
                     d0_data = np.vstack([context[tag]["d0"] for tag in tags]).T
 
-                    # NumPy 配列によるベクトル計算
                     d1_results, d2_results, d3_results, assurances = [], [], [], []
                     for i in range(30):
                         try:
                             with np.errstate(divide='raise', invalid='raise'):
-                                d1_result = round(formula_func(*d1_data[i]), 2)
-                                d2_result = round(formula_func(*d2_data[i]), 2)
-                                d3_result = round(formula_func(*d3_data[i]), 2)
+                                d1_result = round(formula_func(*d1_data[i]), 1)
+                                d2_result = round(formula_func(*d2_data[i]), 1)
+                                d3_result = round(formula_func(*d3_data[i]), 1)
                                 assurance = int(np.all(d0_data[i] == 1))
                                 d1_results.append(d1_result)
                                 d2_results.append(d2_result)
@@ -110,7 +125,7 @@ class FormulaProcessor:
                             d3_results.append(None)
                             assurances.append(2)
                         except Exception as e:
-                            self.com.logger.error(f"Unexpected error in calculation at index {i}: {e}")
+                            self.com.logger.error(f"Unexpected error at index {i}: {e}")
                             d1_results.append(None)
                             d2_results.append(None)
                             d3_results.append(None)
@@ -122,10 +137,17 @@ class FormulaProcessor:
                         d1_results + d2_results + d3_results + assurances
                     )
                 except Exception as e:
-                    self.com.logger.error(f"Error in calculation for group {factory}, {date}: {e}")
+                    self.com.logger.error(f"Error for group {factory}, {date}: {e}")
                     continue
 
-            # 結果を DataFrame に変換
+            # プレースホルダーを元のタグに戻す
+            for result in results:
+                for key, original_tag in tag_map.items():
+                    result[2] = result[2].replace(key, original_tag)  # tag列
+                    result[3] = result[3].replace(key, original_tag)  # local_tag列
+                    result[4] = result[4].replace(key, original_tag)  # local_id列
+
+            # DataFrameに変換
             columns = ["factory", "date", "tag", "local_tag", "local_id", "name", "unit", "data_division"] + \
                     [f"d1_{i}" for i in range(30)] + [f"d2_{i}" for i in range(30)] + \
                     [f"d3_{i}" for i in range(30)] + [f"d0_{i}" for i in range(30)]
@@ -138,33 +160,26 @@ class FormulaProcessor:
             self.com.logger.error(f"Error in calculation with data assurance codes: {e}")
             raise
 
-    def process_formula(self, target_date: str, formula_id: str):
-        """
-        ターゲット日付と計算式IDを指定して計算を実行し、結果をデータベースに保存する。
-        """
+    def process_formula(self, factory_cd: str, formula_id: str, target_date: str):
         try:
             formula_data = self.com.formula_data_service.get_formula_by_id(formula_id)
             self.com.logger.info(f"Formula data retrieved for ID {formula_id}: {formula_data}")
 
             if not formula_data or not isinstance(formula_data, dict):
-                self.com.logger.error(f"Formula ID {formula_id} not found or invalid format.")
                 raise ValueError(f"Formula ID {formula_id} not found or invalid format.")
 
             formula = formula_data.get("formula")
             sensor_name = formula_data.get("sensor_name")
 
-            if not formula:
-                self.com.logger.error(f"Formula is missing in the data for ID {formula_id}.")
-                raise ValueError(f"Formula is missing in the data for ID {formula_id}.")
-
-            if not sensor_name:
-                self.com.logger.error(f"Sensor name is missing in the data for ID {formula_id}.")
-                raise ValueError(f"Sensor name is missing in the data for ID {formula_id}.")
+            if not formula or not sensor_name:
+                raise ValueError(f"Formula or sensor name is missing for ID {formula_id}.")
 
             tags = self.extract_tags_from_formula(formula)
-            self.com.logger.info(f"Extracted tags for formula ID {formula_id}: {tags}")
+            tag_factory_map = {tag: factory_cd for tag in tags}  # タグと工場コードのマッピング
 
-            sql_data = self.com.sensor_data_service.get_sensor_data(tags, target_date)
+            self.com.logger.info(f"Extracted tags for formula ID {formula_id}: {tag_factory_map}")
+
+            sql_data = self.com.sensor_data_service.get_sensor_data(tag_factory_map, target_date)
             self.com.logger.info("Sensor data retrieved successfully.")
 
             self.validate_tags_in_data(tags, sql_data)
@@ -179,10 +194,9 @@ class FormulaProcessor:
 
             success = self.com.formula_data_service.save_calculation_results(result_data)
             if success:
-                self.com.logger.info(f"Calculation completed and saved for formula ID {formula_id} on {target_date}.")
+                self.com.logger.info(f"Calculation saved for formula ID {formula_id} on {target_date}.")
             else:
-                self.com.logger.error(f"Failed to save calculation results for formula ID {formula_id} on {target_date}.")
-                raise RuntimeError(f"Failed to save calculation results for formula ID {formula_id} on {target_date}.")
+                raise RuntimeError(f"Failed to save results for formula ID {formula_id}.")
 
         except Exception as e:
             self.com.logger.error(f"Error in process_formula: {e}")
@@ -190,9 +204,10 @@ class FormulaProcessor:
 if __name__ == "__main__":
     # 実行例
     com = CommonFacade()
-    processor = FormulaProcessor(com)
-    processor.process_formula("2024-12-02", "H2")
-    processor.process_formula("2024-12-02", "H3")
-    processor.process_formula("2024-12-02", "H4")
-    processor.process_formula("2024-12-02", "H5")
-    processor.process_formula("2024-12-02", "H6")
+    processor = DataPocessing(com)
+    processor.process_formula("H","H1","2024-12-20")
+    processor.process_formula("H","H2","2024-12-20")
+    processor.process_formula("H","H3","2024-12-20")
+    processor.process_formula("H","H4","2024-12-20")
+    processor.process_formula("H","H5","2024-12-20")
+    processor.process_formula("H","H6","2024-12-20")

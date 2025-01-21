@@ -81,8 +81,9 @@ def test_get_sensor_data_with_none_tags(sensor_service, mock_repository):
     tags = None
     date = '2024-12-06'
 
-    with pytest.raises(ValueError, match="Tags list cannot be None"):
+    with pytest.raises(ValueError, match="Tags and factory codes cannot be empty"):
         sensor_service.get_sensor_data(tags, date)
+
 
 def test_get_sensor_data_with_invalid_date(sensor_service, mock_repository):
     tags = ['tag1', 'tag2']

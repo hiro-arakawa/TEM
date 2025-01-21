@@ -32,66 +32,51 @@ class ProductionSensorDataRepository(AbstractSensorDataRepository):
         self.logger = logger
 
 
-    def fetch_sensor_data(self, table_name: str, tags: List[str], date: str) -> pd.DataFrame:
+    def fetch_sensor_data(self, table_name: str, tag_factory_map: dict, date: str) -> pd.DataFrame:
+        conditions = " OR ".join(
+            [f"(tag = ? AND factory = ?)" for _ in tag_factory_map]
+        )
         sql_query = f"""
         SELECT 
             [factory], [tag], [date],
             [local_tag], [local_id], [name], [unit], [data_division],
             {', '.join([f'[d{i}_{j}]' for i in range(4) for j in range(30)])},
-            [last_update]  -- 追加
+            [last_update]
         FROM {table_name}
-        WHERE [tag] IN ({', '.join(['?' for _ in tags])})
-        AND [date] = ?
+        WHERE ({conditions}) AND [date] = ?
         """
-        params = tags + [date]
+        params = [item for pair in tag_factory_map.items() for item in pair] + [date]
 
         try:
-            # SQLクエリの実行
             sql_response = self.sql_client.execute_query(sql_query, params)
-
-            # レスポンスをリストのリストに変換
-            sql_response = [list(row) for row in sql_response]  # 必要な変換
-
-            # カラムリスト
+            sql_response = [list(row) for row in sql_response]
             columns = ["factory", "tag", "date", "local_tag", "local_id", "name", "unit", "data_division"] + \
-                    [f"d{i}_{j}" for i in range(4) for j in range(30)] + ["last_update"]  # 修正箇所
-
-            # DataFrame作成
+                    [f"d{i}_{j}" for i in range(4) for j in range(30)] + ["last_update"]
             return pd.DataFrame(sql_response, columns=columns)
-
         except Exception as e:
-            raise RuntimeError(f"Error fetching sensor data from table '{table_name}': {e}")
+            raise RuntimeError(f"Error fetching sensor data: {e}")
 
     def save_sensor_data(self, df: pd.DataFrame, table_name: str) -> bool:
         """
-        Save sensor data to the specified table in the database using UPDATE for existing rows
-        and INSERT for new rows.
+        Save sensor data to the specified table in the database using DELETE + INSERT 
+        to avoid updating primary key columns directly.
         """
         try:
-            # 必須カラムと空のデータフレームの早期チェック
             if not {"factory", "tag", "date", "d0_0"}.issubset(df.columns):
                 self.logger.error("Data is missing required columns or is empty.")
                 return False
 
             import datetime
-
-            # データフレームに現在の時刻を表す列を追加
-            if "last_update" in df.columns:
-                self.logger.warning("Overwriting existing 'last_update' column.")
             df['last_update'] = datetime.datetime.now()
-
-            # カラムリスト
             columns = df.columns.tolist()
 
-            # UPDATE用のクエリ生成
-            update_query = f"""
-            UPDATE {table_name}
-            SET {', '.join([f"{col} = ?" for col in columns if col != 'last_update'])},
-                last_update = ?
+            # DELETE用のクエリ
+            delete_query = f"""
+            DELETE FROM {table_name}
             WHERE factory = ? AND tag = ? AND date = ?
             """
 
-            # INSERT用のクエリ生成
+            # INSERT用のクエリ
             insert_query = f"""
             INSERT INTO {table_name} ({', '.join(columns)})
             VALUES ({', '.join(['?'] * len(columns))})
@@ -101,16 +86,11 @@ class ProductionSensorDataRepository(AbstractSensorDataRepository):
                 try:
                     with connection.cursor() as cursor:
                         for _, row in df.iterrows():
-                            # UPDATEの実行
-                            update_params = [
-                                row[col] for col in columns if col != 'last_update'
-                            ] + [row['last_update'], row['factory'], row['tag'], row['date']]
-                            cursor.execute(update_query, update_params)
+                            delete_params = [row['factory'], row['tag'], row['date']]
+                            cursor.execute(delete_query, delete_params)
 
-                            # INSERTの実行（更新が影響を及ぼさない場合）
-                            if cursor.rowcount == 0:
-                                insert_params = [row[col] for col in columns]
-                                cursor.execute(insert_query, insert_params)
+                            insert_params = [row[col] for col in columns]
+                            cursor.execute(insert_query, insert_params)
 
                         connection.commit()
                 except Exception as e:

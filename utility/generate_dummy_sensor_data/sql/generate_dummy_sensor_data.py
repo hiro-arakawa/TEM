@@ -157,7 +157,7 @@ def main():
     全工場を対象にセンサーデータを生成し、日付単位のINSERT文を出力します。
     """
     # 日付範囲
-    start_date = datetime.date(2023, 12, 25)
+    start_date = datetime.date(2024, 12, 1)
     end_date = datetime.date(2024, 12, 31)
 
     # DataLoadTemp の処理
@@ -168,17 +168,17 @@ def main():
         table_name="data_loader_data_load_temp",
         tag_rule=generate_tag_for_data_load_temp
     )
-    generate_insert_statements(data_load_data, "H", "data_loader_data_load_temp")  # 出力先フォルダを指定
+    generate_insert_statements(data_load_data, "H", "sensor_data")  # 出力先フォルダを指定
 
     # CalculationTemp の処理
-    calculation_data = generate_sensor_data(
-        factory_code="H",
-        start_date=start_date,
-        end_date=end_date,
-        table_name="data_processing_calculation_temp",
-        tag_rule=generate_tag_for_calculation_temp
-    )
-    generate_insert_statements(calculation_data, "H", "data_processing_calculation_temp")  # 出力先フォルダを指定
+    # calculation_data = generate_sensor_data(
+    #     factory_code="H",
+    #     start_date=start_date,
+    #     end_date=end_date,
+    #     table_name="data_processing_calculation_temp",
+    #     tag_rule=generate_tag_for_calculation_temp
+    # )
+    # generate_insert_statements(calculation_data, "H", "data_processing_calculation_temp")  # 出力先フォルダを指定
 
 if __name__ == "__main__":
     main()

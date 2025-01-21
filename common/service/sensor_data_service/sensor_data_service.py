@@ -17,21 +17,26 @@ class SensorDataService:
         """
         self.repository = repository
 
-    def get_sensor_data(self, tags: List[str], date: str) -> pd.DataFrame:
+
+    def get_sensor_data(self, tag_factory_map: dict, date: str) -> pd.DataFrame:
         """
         指定されたタグと日付に基づいてセンサーデータを取得し、DataFrame 形式で返す。
 
-        :param tags: List[str], 取得するタグのリスト
+        :param tag_factory_map: dict, タグと工場コードの辞書 {tag: factory}
         :param date: str, データを取得する対象の日付（YYYY-MM-DD形式）
         :return: pd.DataFrame, センサーデータフレーム
         """
-        if tags is None:
-            raise ValueError("Tags list cannot be None")
+        if not tag_factory_map:
+            raise ValueError("Tags and factory codes cannot be empty")
+
         try:
             sensor_table = get_table_name("sensor_data_table")  # 設定からテーブル名を取得
         except KeyError as e:
-            raise KeyError(f"Table name for sensor_data_table is not configured") from e
-        return self.repository.fetch_sensor_data(sensor_table, tags, date)
+            raise KeyError("Table name for sensor_data_table is not configured") from e
+
+        return self.repository.fetch_sensor_data(sensor_table, tag_factory_map, date)
+
+
 
     def save_sensor_data(self, df: pd.DataFrame) -> bool:
         """

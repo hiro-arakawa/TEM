@@ -111,6 +111,9 @@ def test_production_repository_fetch_data(production_repository, mocker):
     tags = ["sensor_1"]
     date = "2024-12-31"
 
+    # リストを辞書形式に変更
+    tag_factory_map = {tag: "A" for tag in tags}  # "A" は仮の工場コード
+
     # モックした SQL 応答
     mock_sql_response = [
         ["A", "sensor_1", "2024-12-31", "local_tag1", "local_id1", "name1", "unit1", "division1"] +
@@ -124,10 +127,11 @@ def test_production_repository_fetch_data(production_repository, mocker):
     mocker.patch.object(production_repository.repository.sql_client, "execute_query", return_value=mock_sql_response)
 
     # 実行
-    result = production_repository.fetch_sensor_data(table_name, tags, date)
+    result = production_repository.fetch_sensor_data(table_name, tag_factory_map, date)
 
     # 検証
     pd.testing.assert_frame_equal(result, mock_df, check_dtype=False)
+
 
 def test_production_repository_save_data_missing_columns(production_repository):
     """ProductionSensorDataRepository の save_sensor_data が必須列欠損時にエラーを返すかを検証"""

@@ -1,3 +1,5 @@
+
+#TODO 設定は一か所に寄せる
 TABLE_NAME_SETTINGS = {
     "sensor_data_table": "batch.data_loader_data_load_temp",
     "calculation_result_table": "batch.data_processing_calculation_temp"
